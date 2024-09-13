@@ -26,9 +26,9 @@ from walsh_jz import run_WSL, run_WSL_shot
 from get_orb_from_qp import OrbitalSetup
 from scipy.interpolate import griddata
 from matplotlib import cm
-file_aos_info_2 = '/home/cesar/qp2/src/real_space/He.ezfio.aos_info_2'
-file_aos_info_3 = '/home/cesar/qp2/src/real_space/He.ezfio.aos_info_3'
-file_mos_info = '/home/cesar/qp2/src/real_space/He.ezfio.mos_info'
+file_aos_info_2 = 'He.ezfio.aos_info_2'
+file_aos_info_3 = 'He.ezfio.aos_info_3'
+file_mos_info = 'He.ezfio.mos_info'
 
 setup = OrbitalSetup(file_aos_info_2, file_aos_info_3, file_mos_info)
 axis = 'xy'
