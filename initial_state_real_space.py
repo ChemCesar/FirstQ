@@ -23,17 +23,18 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 from walsh_jz import run_WSL, run_WSL_shot
+from fourier_series_loader import run_FSL_1d, run_FSL_2d
 from get_orb_from_qp import OrbitalSetup
-from scipy.interpolate import griddata
-from matplotlib import cm
-file_aos_info_2 = 'He.ezfio.aos_info_2'
-file_aos_info_3 = 'He.ezfio.aos_info_3'
-file_mos_info = 'He.ezfio.mos_info'
+from gqsp_for_diagonal_checked import run_GQSP
+
+file_aos_info_2 = '/home/cesar/qp2/src/real_space/He.ezfio.aos_info_2'
+file_aos_info_3 = '/home/cesar/qp2/src/real_space/He.ezfio.aos_info_3'
+file_mos_info = '/home/cesar/qp2/src/real_space/He.ezfio.mos_info'
 
 setup = OrbitalSetup(file_aos_info_2, file_aos_info_3, file_mos_info)
-axis = 'xy'
-n_qubits = 8
-n_walsh_operators = 20
+axis = 'x'
+n_qubits = 9
+n_walsh_operators = 10
 e0 = 100  
 shots = 1000000
 
@@ -62,7 +63,8 @@ class InitialStateGrid:
         self.n_walsh_operators = n_walsh_operators
         self.e0 = e0
         self.shots = shots
-        
+        self.GQSP = False
+    
     def create_atomic_orbital(self, indice):
         ao_center = self.ao_center[indice]
         ao_n_gauss = self.ao_n_gauss[indice]
@@ -72,7 +74,6 @@ class InitialStateGrid:
 
         def orbital(x):
             x,y,z = self.f_grid_custom(x)
-            
             t = 0
             if x is None: x=ao_center[0]
             if y is None: y=ao_center[1]
@@ -84,7 +85,7 @@ class InitialStateGrid:
                       (y - ao_center[1]) ** ao_axyz[1] *
                       (z - ao_center[2]) ** ao_axyz[2] *
                       np.exp(- ao_alpha[k] * distance))
-            return t/100
+            return t
         
         self.orbitals[f'orbital_{indice}'] = orbital
     
@@ -142,6 +143,16 @@ class InitialStateGrid:
         self.quantum_state, self.reference_state = run_WSL_shot(orbital, n_qubits, e0, threshold, n_operators, shots, method, swap_option)
         return
     
+    def run_fourier_state_prep(self, orbital, n_qubits, n_operators=1):
+        if self.dimension == 1:
+            self.quantum_state, self.reference_state = run_FSL_1d(orbital, n_qubits, n_operators)
+        else: self.quantum_state, self.reference_state = run_FSL_2d(orbital, n_qubits, n_operators)
+        return
+    
+    def run_state_prep_GQSP(self, orbital, n_qubits, n_operators=1):
+        self.quantum_state, self.reference_state = run_GQSP(orbital, n_qubits, n_operators)
+        return
+    
     def plot_1D_to_2D(self):
         self.quantum_state = np.array([self.quantum_state[i] * self.quantum_state[j] for i in range(len(self.quantum_state)) for j in range(len(self.quantum_state))])
         self.dimension = 2
@@ -172,35 +183,49 @@ class InitialStateGrid:
                 elif self.axis == 'yz': x, y = np.array(y), np.array(z)
                 xi = np.linspace(min(x), max(x), len(self.single_grid))
                 yi = np.linspace(min(y), max(y), len(self.single_grid))
-                xi, yi = np.meshgrid(xi, yi)
+                # xi, yi = np.meshgrid(xi, yi)
                 
-                Z = griddata((x, y), amplitude, (xi, yi), method='cubic')
-                #3D surface plot
-                fig = plt.figure(figsize=(5, 4))
-                ax = fig.add_subplot(111, projection='3d')
-                surf = ax.plot_surface(xi, yi, Z, cmap=cm.coolwarm, linewidth=0, antialiased=False)
-
-                cb = fig.colorbar(surf)
-                cb.set_label('Amplitude')
-                ax.set_xlabel(self.axis[0])
-                ax.set_ylabel(self.axis[1])
-                # ax.set_zlabel('Amplitude')
-                plt.title('Quantum State Preparation, 3D surface plot with amplitude')
-                plt.show()
+                
+                X, Y = np.meshgrid(xi, yi)
+                Z=np.array(np.array(amplitude).reshape((len(self.single_grid),len(self.single_grid))))
+                fig = plt.figure()
+                plt.figure(figsize=(10,10))
+                ax = plt.axes(projection='3d')
+                ax.view_init(20, 290)
+                ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='inferno', edgecolor='none')
+                ax.set_xlabel(self.axis[0]), ax.set_ylabel(self.axis[1])
+                ax.set_zlabel('Amplitude')
+                ax.set_title('Quantum State Preparation')
+                ticks = np.linspace(min(X.flatten()), max(X.flatten()), num=5)
+                ax.set_xticks(ticks), ax.set_yticks(ticks)
                 #____________________________________________________________________________________________
                 #2D isosurface plot
                 k=len(set(amplitude))
                 if not np.isnan(amplitude).any():
+                    # Sort and slice the amplitudes, ensuring they are ordered
                     amplitudes = sorted(set(amplitude), reverse=True)[:k][::-1]
-                    fig = plt.figure(figsize=(5, 4))
-                    cmap = plt.get_cmap('seismic')  
                     fig, ax = plt.subplots(figsize=(5, 4))
-                    contour = ax.contourf(xi, yi, Z, levels=amplitudes, cmap=cmap)
-                    fig.colorbar(contour, ax=ax, orientation='vertical')
-                    ax.set_xlabel(self.axis[0])
-                    ax.set_ylabel(self.axis[1])
+                    if min(amplitudes)<0:
+                        cmap = plt.get_cmap('seismic')
+                        indices = np.linspace(0, len(amplitudes)-1, num=7, dtype=int)
+                        cbar_ticks = [amplitudes[i] for i in indices]
+                        contour = ax.contourf(X, Y, Z, levels=amplitudes, cmap=cmap)
+                    else:
+                        cmap = plt.get_cmap('inferno')
+                        indices = np.linspace(0, len(amplitudes)-1, num=7, dtype=int)
+                        cbar_ticks = [amplitudes[i] for i in indices]
+                        contour = ax.contourf(X, Y, Z, levels=amplitudes, cmap=cmap)
+                    
+                    cbar = fig.colorbar(contour, ax=ax, orientation='vertical')
+                    ticks = np.linspace(min(X.flatten()), max(X.flatten()), num=5)
+                    ax.set_xticks(ticks), ax.set_yticks(ticks)
+                    
+                    ax.set_xlabel(self.axis[0]), ax.set_ylabel(self.axis[1])
+                    cbar.set_ticks(cbar_ticks)
+                    cbar.set_label('Amplitude')
                     plt.show()
-                
+                    
+                    
         else:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
@@ -223,14 +248,15 @@ m = InitialStateGrid(axis, n_qubits, n_walsh_operators, e0, shots, setup)
 
 #     m.plot_state()
 #     break
-
-m.run_state_prep(m.orbitals['orbital_4'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
+# m.run_fourier_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.n_walsh_operators)
+m.run_state_prep_GQSP(m.orbitals['orbital_0'], m.n_qubits, m.n_walsh_operators)
+# m.run_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
 m.plot_state()
-# print('_____________________NOW WITH SHOTS___________________')
-m.run_state_prep_shot(m.orbitals['orbital_4'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
+# # print('_____________________NOW WITH SHOTS___________________')
+# m.run_state_prep_shot(m.orbitals['orbital_4'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
 
-m.plot_state()
-print('\nTotal infidelity =', 1 - np.abs(np.dot(np.conjugate(m.quantum_state),m.reference_state))**2)
+# m.plot_state()
+# print('\nTotal infidelity =', 1 - np.abs(np.dot(np.conjugate(m.quantum_state),m.reference_state))**2)
 
 
 

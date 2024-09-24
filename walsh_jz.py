@@ -329,7 +329,7 @@ def run_WSL(f,m,e0,threshold=0,n_operators=1,method='decreasing_order', swap_opt
     reference /= np.linalg.norm(reference)
     trial = phase/np.linalg.norm(phase)
     
-    infidelity = 1 - trial.T@reference
+    infidelity = 1 - abs(trial.T@reference)
     print('Infidelity=', infidelity)
 
     return trial, reference
