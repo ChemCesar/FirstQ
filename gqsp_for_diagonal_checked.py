@@ -8,7 +8,6 @@ Quantum circuit for diagonal operators approximated by Fourier Series using Gene
 """
 import numpy as np
 import scipy
-import matplotlib.pyplot as plt
 from qiskit import QuantumRegister, QuantumCircuit
 import qiskit.quantum_info as qi
 from qiskit import Aer, transpile, execute
@@ -220,101 +219,81 @@ def qc_diagonal_1D(f,n,M):
     #print(qc.decompose().decompose().draw())
     return(diag_fourier)
 
-"""verification diagonal operator"""
-    
-def verification_diag_1D(f,n,M):
-    N=2**n
-    q = QuantumRegister(n,'q')
-    a = QuantumRegister(1,'a')
-    qc= QuantumCircuit(a,q)
-    
-    qubit=[i for i in a]+[i for i in q]
-    hgate=hadamard()
-    h_controlled= hgate.control(1,ctrl_state=0)
-    for i in range(n):
-        qubiti=[j for j in a]+[q[i]]
-        qc.append(h_controlled,qubiti)
-        
-    X=np.array([i for i in range(N)])/N
-    m=max([f(x) for x in X])
-    def f_normalized(x):
-        return(f(x)/m)
-    
-    diag=qc_diagonal_1D(f,n,M)
-    qc.append(diag,qubit)
-    stv = qi.Statevector.from_instruction(qc)
-    L=stv.data
-    l=len(L)
-    
-    
-    """ We take values of the vector for which the ancilla qubit is in state 1 and we need to renormalize."""
-    
-    wavevector=[L[2*i]for i in range(int(l/2))]
-    phase_bis=np.angle(wavevector)/np.linalg.norm(np.angle(wavevector))
-    Y=[f_normalized(x) for x in X]
-    Y=Y/np.linalg.norm(Y)
-    plt.plot(X,phase_bis,c='b',ls='-',marker='x',label="Implemented state")
-    plt.plot(X,Y,c='r',ls='--',marker='.',label='Target state')
-    
-    plt.title("diagonal unitary on n="+str(n)+" qubits")
-    plt.grid()
-    plt.xlabel("x")
-    plt.ylabel("f(x)")
-    plt.legend()
-    plt.show()
 
-def run_GQSP(f,n,n_operators=1):
-    N=2**n
-    q = QuantumRegister(n,'q')
-    a = QuantumRegister(1,'a')
-    qc= QuantumCircuit(a,q)
+def measure_circuit_success(circuit, shots, backend):
+    m = circuit.num_qubits - 1
+    circuit.measure_all()
+    job = execute(circuit, backend, shots=shots)
+    result = job.result()
     
-    qubit=[i for i in a]+[i for i in q]
-    hgate=hadamard()
-    h_controlled= hgate.control(1,ctrl_state=0)
+    counts = result.get_counts(circuit)
+    # Count the number of success
+    count_first_qubit_1 = sum(count for state, count in counts.items() if state[-1] == '0')
+    
+    filtered_counts = {}
+    for state, count in counts.items():
+        if state[-1] == '0':
+            suppressed_state = state[:-1]  # Remove the ancilla qubit
+            if suppressed_state in filtered_counts:
+                filtered_counts[suppressed_state] += count
+            else:
+                filtered_counts[suppressed_state] = count
+
+    print(f"Number of success: {count_first_qubit_1}")
+    assert(count_first_qubit_1>1)
+    
+    # Convert counts to a wavevector-like format
+    wavevector = np.zeros(2**m, dtype=float)
+    for state, count in filtered_counts.items():
+        index = int(state, 2)
+        wavevector[index] = np.sqrt(count / shots)
+    return wavevector
+
+
+def run_GQSP(f, n, n_operators=1, shots=-1):
+    N = 2**n
+    q = QuantumRegister(n, 'q')
+    a = QuantumRegister(1, 'a')
+    qc = QuantumCircuit(a, q)
+
+    # Apply controlled Hadamard gates
+    h_controlled = hadamard().control(1, ctrl_state=0)
     for i in range(n):
-        qubiti=[j for j in a]+[q[i]]
-        qc.append(h_controlled,qubiti)
-        
-    X=np.array([i for i in range(N)])/N
-    m=max([f(x) for x in X])
-    def f_normalized(x):
-        return(f(x)/m)
-    
-    diag=qc_diagonal_1D(f,n,n_operators)
-    qc.append(diag,qubit)
-    stv = qi.Statevector.from_instruction(qc)
-    L=stv.data
-    l=len(L)
-    
+        qc.append(h_controlled, [a[0], q[i]])
+
+    # Normalize the function
+    X = np.arange(N) / N
+    m = max(f(x) for x in X)
+    f_normalized = lambda x: f(x) / m
+
+    # Add the diagonal unitary
+    diag = qc_diagonal_1D(f, n, n_operators)
+    qc.append(diag, a[:] + q[:])
+
+    # Transpile and display circuit stats
     simulator = Aer.get_backend('qasm_simulator')
     qc_trans = transpile(qc, simulator)
-    circ_trans = transpile(qc, basis_gates=['u','cx','cp','cz'])
-    print("Diag Unitary size_brut:", qc.size(),"size_transpiled:",circ_trans.size(),"size_transpiled2:",qc_trans.size())
-    print("Diag Unitary depth_brut:", qc.depth(),"depth_transpiled:",circ_trans.depth(), "depth_transpiled:",qc_trans.depth())
+    circ_trans = transpile(qc, basis_gates=['u', 'cx', 'cp', 'cz'])
+    print(f"Diag Unitary size: {qc.size()} transpiled: {circ_trans.size()} {qc_trans.size()}")
+    print(f"Diag Unitary depth: {qc.depth()} transpiled: {circ_trans.depth()} {qc_trans.depth()}")
 
-    """ We take values of the vector for which the ancilla qubit is in state 1 and we need to renormalize."""
-    
-    wavevector=[L[2*i]for i in range(int(l/2))]
-    # phase_bis=np.angle(wavevector)/np.linalg.norm(np.angle(wavevector))
+    # Simulation and measurement
+    if shots == -1:
+        stv = qi.Statevector.from_instruction(qc).data
+        wavevector = np.array([stv[2*i] for i in range(len(stv)//2)])
+    else:
+        wavevector = measure_circuit_success(qc, shots, simulator)
+
     wavevector /= np.linalg.norm(wavevector)
-    Y=[f_normalized(x) for x in X]
-    Y=Y/np.linalg.norm(Y)
-    plt.plot(X,wavevector,c='b',ls='-',marker='x',label="Implemented state")
-    plt.plot(X,Y,c='r',ls='--',marker='.',label='Target state')
-    
-    plt.title("diagonal unitary on n="+str(n)+" qubits")
-    plt.grid()
-    plt.xlabel("x")
-    plt.ylabel("f(x)")
-    plt.legend()
-    plt.show()
-    
-    
-    infidelity = 1 - abs(np.array(wavevector).T@Y)**2
-    print('Infidelity=', infidelity)
+    Y = np.array([f_normalized(x) for x in X])
+    Y /= np.linalg.norm(Y)
+
+    # Calculate infidelity
+    infidelity = 1 - np.abs(wavevector.T @ Y)**2
+    print('Infidelity =', infidelity)
 
     return np.real(wavevector), np.real(Y)
+
 # """tests"""
 # verification_diag_1D(gaussian2,10,4)
 # verification_diag_1D(sinc,7,15)

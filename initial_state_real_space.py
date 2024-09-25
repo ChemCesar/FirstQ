@@ -33,13 +33,13 @@ file_mos_info = '/home/cesar/qp2/src/real_space/He.ezfio.mos_info'
 
 setup = OrbitalSetup(file_aos_info_2, file_aos_info_3, file_mos_info)
 axis = 'x'
-n_qubits = 9
-n_walsh_operators = 10
+n_qubits = 4
+n_operators = 2
 e0 = 100  
-shots = 1000000
+shots = 100000
 
 class InitialStateGrid:
-    def __init__(self, axis, n_qubits, n_walsh_operators, e0, shots, setup:OrbitalSetup):
+    def __init__(self, axis, n_qubits, n_operators, e0, shots, setup:OrbitalSetup):
         
         setup_attributes = [attr for attr in dir(setup) if '__' not in attr]
         for attr in setup_attributes:
@@ -60,10 +60,9 @@ class InitialStateGrid:
         for k in range(len(self.mo_coef)):
             self.create_mol_orbital(k)
         
-        self.n_walsh_operators = n_walsh_operators
+        self.n_operators = n_operators
         self.e0 = e0
         self.shots = shots
-        self.GQSP = False
     
     def create_atomic_orbital(self, indice):
         ao_center = self.ao_center[indice]
@@ -85,7 +84,7 @@ class InitialStateGrid:
                       (y - ao_center[1]) ** ao_axyz[1] *
                       (z - ao_center[2]) ** ao_axyz[2] *
                       np.exp(- ao_alpha[k] * distance))
-            return t
+            return t/15
         
         self.orbitals[f'orbital_{indice}'] = orbital
     
@@ -149,8 +148,8 @@ class InitialStateGrid:
         else: self.quantum_state, self.reference_state = run_FSL_2d(orbital, n_qubits, n_operators)
         return
     
-    def run_state_prep_GQSP(self, orbital, n_qubits, n_operators=1):
-        self.quantum_state, self.reference_state = run_GQSP(orbital, n_qubits, n_operators)
+    def run_state_prep_GQSP(self, orbital, n_qubits, n_operators=1, n_shots=-1):
+        self.quantum_state, self.reference_state = run_GQSP(orbital, n_qubits, n_operators, n_shots)
         return
     
     def plot_1D_to_2D(self):
@@ -240,7 +239,7 @@ class InitialStateGrid:
     
     
     
-m = InitialStateGrid(axis, n_qubits, n_walsh_operators, e0, shots, setup)
+m = InitialStateGrid(axis, n_qubits, n_operators, e0, shots, setup)
 # for orbital_name in m.orbitals.keys():
 #     m.run_state_prep(m.orbitals[orbital_name], m.n_qubits)
 #     m.plot_state()
@@ -248,12 +247,12 @@ m = InitialStateGrid(axis, n_qubits, n_walsh_operators, e0, shots, setup)
 
 #     m.plot_state()
 #     break
-# m.run_fourier_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.n_walsh_operators)
-m.run_state_prep_GQSP(m.orbitals['orbital_0'], m.n_qubits, m.n_walsh_operators)
-# m.run_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
+# m.run_fourier_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.n_operators)
+m.run_state_prep_GQSP(m.orbitals['orbital_1'], m.n_qubits, m.n_operators, m.shots)
+# m.run_state_prep(m.orbitals['orbital_0'], m.n_qubits, m.e0, 0, m.n_operators, m.shots, method='decreasing_order', swap_option=True)
 m.plot_state()
 # # print('_____________________NOW WITH SHOTS___________________')
-# m.run_state_prep_shot(m.orbitals['orbital_4'], m.n_qubits, m.e0, 0, m.n_walsh_operators, m.shots, method='decreasing_order', swap_option=True)
+# m.run_state_prep_shot(m.orbitals['orbital_4'], m.n_qubits, m.e0, 0, m.n_operators, m.shots, method='decreasing_order', swap_option=True)
 
 # m.plot_state()
 # print('\nTotal infidelity =', 1 - np.abs(np.dot(np.conjugate(m.quantum_state),m.reference_state))**2)
