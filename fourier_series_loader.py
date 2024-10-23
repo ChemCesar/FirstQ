@@ -522,10 +522,11 @@ def run_FSL_1d(f,m,n_operators=1):
     output_state = job.result().get_statevector(circ)
     # Reordering qubits
     simulated_f = output_reordering(output_state)
+    simulated_f = [simulated_f[i].real for i in range(len(simulated_f))]
     infidelity = 1 - np.abs(np.dot(np.conjugate(simulated_f),target_f))**2
     print('Infidelity=', infidelity)
     
-    return output_reordering(output_state), target_f
+    return simulated_f, target_f, transpiled_circ.size(), transpiled_circ.depth()
 
 
 def from_list_to_array(L):
@@ -593,7 +594,7 @@ def run_FSL_2d(f,m,n_operators=1):
     infidelity = 1 - np.abs(np.dot(np.conjugate(simulated_f),target_f))**2
     print(infidelity)
     
-    return simulated_f, target_f
+    return simulated_f, target_f, transpiled_circ.size(), transpiled_circ.depth()
 
 
 

@@ -292,7 +292,7 @@ def run_GQSP(f, n, n_operators=1, shots=-1):
     infidelity = 1 - np.abs(wavevector.T @ Y)**2
     print('Infidelity =', infidelity)
 
-    return np.real(wavevector), np.real(Y)
+    return np.real(wavevector), np.real(Y), qc_trans.size(), qc_trans.depth()
 
 # """tests"""
 # verification_diag_1D(gaussian2,10,4)
